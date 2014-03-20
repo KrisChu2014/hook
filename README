@@ -1,0 +1,49 @@
+An Undocumented Linux Kernel Block Device Filtering  
+
+
+=== INTRODUCTION ===
+
+Disk filtering is one of the core pieces for any monitoring-like operations, such as 
+Copy on Write snapshot. However, unlike Windows, when it comes to disk filtering, Linux 
+does not have any ready-to-use framework that Windows does. This project(hook) presents 
+an undocumented approach to get notification of disk events such as create, change, and 
+delete. There is another project(bmap) that presents a way to intercept IO requests.
+
+
+=== IMPLEMENTATION ===
+
+Following are two key observations:
+
+1) Each kernel resource is managed by Linux kernel through an embedded object, 
+kobject(linux/kobject.h). Linux kernel maintains a parent-child relationship for these 
+resources, in which case, for example, a disk partition is a child of the disk that has the 
+partitions. At the meantime, all individual disks are managed under one single kobject, which 
+here is referred to as "root_kset". However, the address of 'root_kset' is NOT exported by 
+kernel.
+
+2) Inside each kobject, there is an event notification table, defined as kset_hotplug_ops 
+before 2.6.16 and kset_uevent_ops after 2.6.16. Inside this table are registered a set of 
+call back functions, each of which corresponds to a specific disk event notification, CREATE, 
+CHANGE, MOUNT, UMOUNT, ONLINE, OFFLINE, and DELETE. 
+
+Given these two facts, if we can get hold of the address of 'root_kset', we can have access to 
+all the disks that have already been created. And by placing our own notification table, we will 
+get notified of any disk that is to be created.
+
+To access 'root_kset', we create a dummy disk and register it in kernel. And thanks to the 
+parent-child relationship maintained by kernel, we can not only access all the children from 
+parent but also trace back to the parent from a child. By recursive back tracing starting from 
+the created dummy disk, we find 'root_kset'. 
+
+Now, all we need to do is to write our own call back functions, depending upon what events we 
+want to get notified of.
+
+
+=== APPLICATION ===
+
+One of the real life applications is when we want to intercept as many write requests as possible. 
+With this approach, we can intercept almost all the writes except those occurring during kernel 
+bootstrap.
+
+
+
